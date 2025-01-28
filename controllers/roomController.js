@@ -54,8 +54,8 @@ export const listActiveRooms = async (req, res) => {
     const rooms = await GameRoom.find({
       isActive: true,
       isPrivate: false,
-      players: { $size: 1 },
     }).populate("players", "username");
+    console.log(rooms);
     res.send(rooms);
   } catch (error) {
     res.status(400).send(error);
