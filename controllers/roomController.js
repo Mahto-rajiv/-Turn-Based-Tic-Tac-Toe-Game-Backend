@@ -17,7 +17,6 @@ export const createRoom = async (req, res) => {
       ],
       currentTurn: req.user._id,
     });
-    console.log(room);
     await room.save();
     res.status(201).send(room);
   } catch (error) {
@@ -55,12 +54,10 @@ export const listActiveRooms = async (req, res) => {
     const rooms = await GameRoom.find({
       isActive: true,
       isPrivate: false,
-      players: { $exists: true }, // Ensures the players field exists
-      $expr: { $gte: [{ $size: "$players" }, 1] }, // Checks if the size is >= 1
+      players: { $size: 1 },
     }).populate("players", "username");
-    res.status(200).send(rooms);
+    res.send(rooms);
   } catch (error) {
-    console.error("Error fetching active rooms:", error);
-    res.status(400).send({ message: "Failed to fetch active rooms", error });
+    res.status(400).send(error);
   }
 };

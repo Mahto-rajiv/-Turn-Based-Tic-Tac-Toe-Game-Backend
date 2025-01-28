@@ -91,10 +91,45 @@ export const makeMove = async (req, res) => {
     }
 
     await room.save();
+
+    // Debug logging
+    console.log("Making move:", {
+      roomId: room._id,
+      row,
+      col,
+      player: req.user._id,
+      hasIO: !!req.io,
+    });
+
+    if (!req.io) {
+      console.error("Socket.IO instance missing from request");
+      // Continue execution but log the error
+    } else {
+      // Emit the move to all players in the room
+      req.io.to(roomId).emit("updateBoard", {
+        row,
+        col,
+        player: req.user._id,
+        boardState: room.boardState,
+      });
+
+      // If the game has ended, emit the result
+      if (!room.isActive) {
+        const result = room.isDraw ? "draw" : "win";
+        req.io.to(roomId).emit("gameEnd", {
+          result,
+          winner: room.winner,
+          isDraw: room.isDraw,
+        });
+      }
+    }
+
     res.send(room);
   } catch (error) {
     console.error("Error in makeMove:", error);
-    res.status(500).send({ error: "Internal server error" });
+    res
+      .status(500)
+      .send({ error: "Internal server error", details: error.message });
   }
 };
 
@@ -107,5 +142,62 @@ export const getLeaderboard = async (req, res) => {
     res.send(leaderboard);
   } catch (error) {
     res.status(400).send(error);
+  }
+};
+
+export const requestRematch = async (req, res) => {
+  try {
+    const { roomId } = req.body;
+    const room = await GameRoom.findById(roomId);
+
+    if (!room || room.isActive) {
+      return res
+        .status(400)
+        .send({ error: "Invalid room or game is still active" });
+    }
+
+    req.io.to(roomId).emit("rematchRequested", { requestedBy: req.user._id });
+    res.send({ message: "Rematch requested" });
+  } catch (error) {
+    console.error("Error in requestRematch:", error);
+    res.status(500).send({ error: "Internal server error" });
+  }
+};
+
+export const acceptRematch = async (req, res) => {
+  try {
+    const { roomId } = req.body;
+    const room = await GameRoom.findById(roomId);
+
+    if (!room || room.isActive) {
+      return res
+        .status(400)
+        .send({ error: "Invalid room or game is still active" });
+    }
+
+    room.boardState = [
+      ["", "", ""],
+      ["", "", ""],
+      ["", "", ""],
+    ];
+    room.currentTurn = room.players[Math.floor(Math.random() * 2)];
+    room.winner = null;
+    room.isDraw = false;
+    room.isActive = true;
+    await room.save();
+
+    req.io.to(roomId).emit("gameStart", {
+      message: "Rematch started!",
+      room: {
+        id: room._id,
+        players: room.players,
+        currentTurn: room.currentTurn,
+      },
+    });
+
+    res.send({ message: "Rematch accepted", room });
+  } catch (error) {
+    console.error("Error in acceptRematch:", error);
+    res.status(500).send({ error: "Internal server error" });
   }
 };

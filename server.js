@@ -12,15 +12,33 @@ dotenv.config();
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+
+// Create Socket.IO instance with CORS configuration
+const io = new Server(server, {
+  cors: {
+    origin: "*", // In production, replace with your frontend URL
+    methods: ["GET", "POST"],
+  },
+});
 
 app.use(express.json());
 
 // Connect to MongoDB
+const MONGODB_URI =
+  process.env.MONGODB_URI || "mongodb://localhost:27017/tic-tac-toe";
 mongoose
-  .connect(process.env.MONGODB_URI)
+  .connect(MONGODB_URI)
   .then(() => console.log("Connected to MongoDB"))
   .catch((err) => console.error("MongoDB connection error:", err));
+
+// Create a middleware to attach io to every request
+const attachIO = (req, res, next) => {
+  req.io = io;
+  next();
+};
+
+// Apply the middleware to all routes
+app.use(attachIO);
 
 // Routes
 app.use("/api/auth", authRoutes);
@@ -33,4 +51,13 @@ setupSocketHandlers(io);
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+});
+
+// Handle server shutdown
+process.on("SIGTERM", () => {
+  console.log("SIGTERM received. Closing server...");
+  server.close(() => {
+    console.log("Server closed");
+    process.exit(0);
+  });
 });
